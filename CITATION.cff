@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the accompanying article."
+title: "Code for the Bayesian sparse generalized Box--Cox Type II Tobit model"
+type: software
+authors:
+  - family-names: Ju
+    given-names: Linying
+  - family-names: Wu
+    given-names: Hao
+version: 1.0.0
+
