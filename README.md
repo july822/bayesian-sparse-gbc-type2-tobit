@@ -80,7 +80,7 @@ python code/empirical/mroz/04_prior_sensitivity_tau0.py
 python code/empirical/mroz/05_prior_sensitivity_tau1.py
 ```
 
-The two main model scripts include the fivefold cross-validation analysis used in the manuscript. Output is written under `results/empirical/mroz/`.
+The two main model scripts include the fivefold cross-validation analysis used in the manuscript. The full-data proposed model and narrower-slab specification use 50,000 iterations per chain. The model without variable selection and the narrower-spike specification use 75,000 iterations per chain. The first 25,000 iterations are discarded in all full-data fits. Cross-validation uses 10,000 iterations per chain with the first 5,000 discarded. Output is written under `results/empirical/mroz/`.
 
 ## MEPS2001 application
 
@@ -90,10 +90,15 @@ The preparation script reads the `MEPS2001` data distributed with the R package 
 Rscript code/empirical/meps2001/01_prepare_meps2001_data.R
 Rscript code/empirical/meps2001/04_iqbal_fixed_log.R
 python code/empirical/meps2001/02_proposed_income_exclusion.py
-python code/empirical/meps2001/03_proposed_no_exclusion.py
 ```
 
-The Iqbal script is run before the proposed-model scripts because it creates the common stratified cross-validation folds. Output is written under `results/empirical/meps2001/`.
+The Iqbal script is run before the proposed-model script because it creates the common stratified cross-validation folds. Both full-data models use 50,000 iterations per chain. The proposed model discards the first 25,000 iterations, whereas the Iqbal model discards the first 5,000. Output is written under `results/empirical/meps2001/`.
+
+The no-exclusion specification is retained as an optional sensitivity analysis that is not reported in the main manuscript:
+
+```bash
+python code/empirical/meps2001/03_proposed_no_exclusion.py
+```
 
 ## Figures
 
@@ -108,6 +113,15 @@ Generate the model-structure diagram with:
 ```bash
 python code/figures/generate_model_structure_figure.py
 ```
+
+After completing the full-data Mroz and MEPS2001 fits, generate the multichain diagnostic figures with:
+
+```bash
+python code/figures/plot_mroz_rhat_evolution.py
+python code/figures/plot_meps_rhat_evolution.py
+```
+
+The empirical fitting scripts write the cumulative rank-normalized split-Rhat summaries required by these two figure scripts.
 
 Figures and their source-data files are written to `figures/`.
 

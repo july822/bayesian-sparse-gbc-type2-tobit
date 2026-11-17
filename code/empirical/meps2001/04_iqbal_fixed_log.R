@@ -248,6 +248,63 @@ draw_array <- array(
   dimnames = list(NULL, paste0("chain", 1:N_CHAINS), parameter_names)
 )
 for (chain in 1:N_CHAINS) draw_array[, chain, ] <- chain_matrices[[chain]]
+
+make_rhat_evolution <- function(
+    draw_array,
+    burn_in,
+    n_points = 30L,
+    min_kept_draws = 1000L
+) {
+  if (length(dim(draw_array)) != 3L) {
+    stop("draw_array must have dimensions iterations x chains x parameters.")
+  }
+  n_kept <- dim(draw_array)[1L]
+  if (n_kept < min_kept_draws) {
+    stop(
+      "Only ", n_kept,
+      " retained draws are available; at least ",
+      min_kept_draws, " are required."
+    )
+  }
+
+  cutoffs <- unique(as.integer(round(seq(
+    from = min_kept_draws,
+    to = n_kept,
+    length.out = n_points
+  ))))
+  result <- vector("list", length(cutoffs))
+
+  for (i in seq_along(cutoffs)) {
+    cutoff <- cutoffs[i]
+    prefix_draws <- posterior::as_draws_array(
+      draw_array[seq_len(cutoff), , , drop = FALSE]
+    )
+    diagnostic <- as.data.frame(
+      posterior::summarise_draws(prefix_draws, "rhat")
+    )
+    diagnostic <- diagnostic[
+      is.finite(diagnostic$rhat),
+      ,
+      drop = FALSE
+    ]
+    if (nrow(diagnostic) == 0L) {
+      stop("No finite Rhat values at cutoff ", cutoff, ".")
+    }
+    worst <- which.max(diagnostic$rhat)
+    result[[i]] <- data.frame(
+      method = "Iqbal fixed-log model",
+      retained_draws_per_chain = cutoff,
+      total_iteration = burn_in + cutoff,
+      max_rhat = diagnostic$rhat[worst],
+      median_rhat = median(diagnostic$rhat),
+      parameters_above_1_01 = sum(diagnostic$rhat > 1.01),
+      worst_parameter = diagnostic$variable[worst],
+      stringsAsFactors = FALSE
+    )
+  }
+  do.call(rbind, result)
+}
+
 draws <- posterior::as_draws_array(draw_array)
 q025 <- function(z) as.numeric(quantile(z, 0.025))
 q975 <- function(z) as.numeric(quantile(z, 0.975))
@@ -266,6 +323,10 @@ diagnostics <- as.data.frame(
   posterior::summarise_draws(
     draws, "rhat", "ess_bulk", "ess_tail", "mcse_mean"
   )
+)
+rhat_evolution <- make_rhat_evolution(
+  draw_array = draw_array,
+  burn_in = BURN_IN
 )
 make_pip_table <- function(equation, variables, indicator_name) {
   pip_by_chain <- vapply(
@@ -765,6 +826,11 @@ write.csv(variable_selection,
           file.path(OUTPUT_DIR, "variable_selection.csv"), row.names = FALSE)
 write.csv(diagnostics,
           file.path(OUTPUT_DIR, "multichain_diagnostics.csv"), row.names = FALSE)
+write.csv(
+  rhat_evolution,
+  file.path(OUTPUT_DIR, "rhat_evolution.csv"),
+  row.names = FALSE
+)
 write.csv(chain_summary,
           file.path(OUTPUT_DIR, "chain_summary.csv"), row.names = FALSE)
 write.csv(scaling_table,
@@ -863,7 +929,8 @@ jsonlite::write_json(
 cat("\nCompleted. Results:\n")
 for (name in c(
   "posterior_summary.csv", "variable_selection.csv",
-  "multichain_diagnostics.csv", "chain_summary.csv",
+  "multichain_diagnostics.csv", "rhat_evolution.csv",
+  "chain_summary.csv",
   "iqbal_predictor_scaling.csv",
   "marginal_effect_posterior_draws.csv.gz",
   "marginal_effect_posterior_summary.csv",

@@ -20,7 +20,7 @@ DATA_FILE = REPO_ROOT / "data" / "processed" / "mroz" / "mroz_zuehlke_design.csv
 OUTPUT_DIR = REPO_ROOT / "results" / "empirical" / "mroz" / "prior_sensitivity_tau0"
 
 N_CHAINS = 4
-N_MCMC = 50000
+N_MCMC = 75000
 BURN_IN = 25000
 CHAIN_SEEDS = [2026101901, 2026101902, 2026101903, 2026101904]
 
@@ -607,6 +607,61 @@ def diagnostic_table(parameter_draws):
     return pd.DataFrame(rows)
 
 
+def rhat_evolution_table(
+    parameter_draws,
+    method_label,
+    burn_in,
+    n_points=30,
+    min_kept_draws=1000,
+):
+    """Calculate cumulative rank-normalized split-Rhat diagnostics."""
+    if not parameter_draws:
+        raise ValueError("parameter_draws is empty.")
+
+    n_kept = min(
+        np.asarray(chains).shape[1]
+        for chains in parameter_draws.values()
+    )
+    if n_kept < min_kept_draws:
+        raise ValueError(
+            f"Only {n_kept} retained draws are available; "
+            f"at least {min_kept_draws} are required."
+        )
+
+    cutoffs = np.unique(np.rint(np.linspace(
+        min_kept_draws, n_kept, n_points
+    )).astype(int))
+    rows = []
+    for cutoff in cutoffs:
+        parameter_rhats = {
+            parameter: rank_split_rhat(
+                np.asarray(chains, dtype=float)[:, :cutoff]
+            )
+            for parameter, chains in parameter_draws.items()
+        }
+        finite_rhats = {
+            parameter: value
+            for parameter, value in parameter_rhats.items()
+            if np.isfinite(value)
+        }
+        if not finite_rhats:
+            raise RuntimeError(
+                f"No finite Rhat values at cutoff {cutoff}."
+            )
+        worst_parameter = max(finite_rhats, key=finite_rhats.get)
+        values = np.asarray(list(finite_rhats.values()), dtype=float)
+        rows.append({
+            "method": method_label,
+            "retained_draws_per_chain": cutoff,
+            "total_iteration": burn_in + cutoff,
+            "max_rhat": finite_rhats[worst_parameter],
+            "median_rhat": float(np.median(values)),
+            "parameters_above_1_01": int(np.sum(values > 1.01)),
+            "worst_parameter": worst_parameter,
+        })
+    return pd.DataFrame(rows)
+
+
 def variable_selection_table(chain_results):
     gamma_alpha = np.concatenate(
         [result["gamma_alpha"] for result in chain_results],
@@ -993,6 +1048,11 @@ def main():
     parameter_draws = stack_parameter_draws(chain_results)
     posterior_summary = posterior_summary_table(parameter_draws)
     diagnostics = diagnostic_table(parameter_draws)
+    rhat_evolution = rhat_evolution_table(
+        parameter_draws,
+        method_label="Proposed GBC, narrower spike",
+        burn_in=BURN_IN,
+    )
     variable_selection = variable_selection_table(chain_results)
     (
         marginal_effect_draws,
@@ -1014,6 +1074,11 @@ def main():
     )
     diagnostics.to_csv(
         OUTPUT_DIR / "multichain_diagnostics.csv",
+        index=False,
+        encoding="utf-8-sig",
+    )
+    rhat_evolution.to_csv(
+        OUTPUT_DIR / "rhat_evolution.csv",
         index=False,
         encoding="utf-8-sig",
     )
@@ -1096,6 +1161,7 @@ def main():
         "posterior_summary.csv",
         "variable_selection.csv",
         "multichain_diagnostics.csv",
+        "rhat_evolution.csv",
         "marginal_effect_posterior_draws.csv.gz",
         "marginal_effect_posterior_summary.csv",
         "marginal_effect_diagnostics.csv",
